@@ -1,6 +1,6 @@
 const OMDB_KEY = "trilogy";
 
-const storedMovies = localStorage.getItem("favourite_books");
+const storedMovies = localStorage.getItem("cineflow_media");
 const movies = storedMovies ? JSON.parse(storedMovies) : [];
 
 let currentFilter = "All";
@@ -8,7 +8,7 @@ let isFilterBarInitialized = false;
 const btnData = [];
 
 function saveToStorage() {
-  localStorage.setItem("favourite_books", JSON.stringify(movies));
+  localStorage.setItem("cineflow_media", JSON.stringify(movies));
 }
 
 async function fetchOmdbData(title) {
