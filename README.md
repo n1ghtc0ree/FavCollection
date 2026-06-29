@@ -2,6 +2,11 @@
 
 A responsive web application for managing a personalized collection of books and movies. The interface utilizes a cinematically styled design layout featuring asymmetric grids, interactive filtering mechanisms, and an automated media asset acquisition fallback system.
 
+## Live Demo
+
+Deploy preview is available here:
+[Visit Favorite Collection](https://favcoll.netlify.app/)
+
 ## Features
 
 * **Dynamic Taxonomy Filtering:** Runtime processing filters out taxonomy category blocks from the DOM if no corresponding database objects match that specific genre identifier.
@@ -13,11 +18,5 @@ A responsive web application for managing a personalized collection of books and
 
 * **Structure:** HTML5
 * **Style Engine:** CSS3 (Custom Variables, Flexbox, Keyframe Matrices, CSS Grid)
-* **Logic Core:** JavaScript (ES6+), jQuery Architecture (Linear Interpolation Layout Pipelines)
+* **Logic Core:** JavaScript (ES6+)
 * **External Integrations:** OMDb REST API Engine, Font Awesome 6
-
-## Deployment
-
-1. Clone the repository locally:
-   ```bash
-   git clone [https://github.com/your-username/favourite-collection.git](https://github.com/your-username/favourite-collection.git)
