@@ -675,3 +675,20 @@ header {
         gap: 25px;
     }
 }
+
+.animate-entry {
+    opacity: 0;
+    transform: translateY(30px);
+    animation: slideUpFade 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.d-1 { animation-delay: 0.05s; }
+.d-2 { animation-delay: 0.15s; }
+.d-3 { animation-delay: 0.25s; }
+
+@keyframes slideUpFade {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

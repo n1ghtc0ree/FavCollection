@@ -64,8 +64,9 @@ const quickAddInput = document.getElementById("quickAddInput");
 let editIndex = null;
 
 function createMovieCard({ name, img, desc, category }, index) {
+  const delay = Math.min(0.1 + (index * 0.05), 0.6);
   return `
-    <div class="books-card" data-index="${index}" id="movieCard-${index}">
+    <div class="books-card animate-entry" style="animation-delay: ${delay}s;" data-index="${index}" id="movieCard-${index}">
       <div class="books-body">
         <div class="image-container loading" id="imgContainer-${index}">
           <span class="card-category-badge">${category}</span>
@@ -277,7 +278,7 @@ function render() {
   if (!filteredMovies.length) {
     const isEmpty = movies.length === 0;
     moviesList.innerHTML = `
-    <div class="empty">
+    <div class="empty animate-entry d-3">
       <h3>Your collection is empty</h3>
       <p style="font-size:0.875rem;margin-top:5px;">${isEmpty ? "Type a movie title in the top search field and press Enter to start." : "Try changing filters."}</p>
     </div>`;
