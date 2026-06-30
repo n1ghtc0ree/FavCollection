@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <script src="script.js" defer></script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e5c158' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect width='18' height='18' x='3' y='3' rx='2'/><path d='M7 3v18'/><path d='M3 7.5h4'/><path d='M3 12h18'/><path d='M3 16.5h4'/><path d='M17 3v18'/><path d='M17 7.5h4'/><path d='M17 16.5h4'/></svg>" type="image/svg+xml" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
@@ -14,48 +14,38 @@
   </head>
   <body>
     <div class="app-wrapper">
+      <div id="debug-log"></div>
+      
       <header class="animate-entry d-1">
         <div class="header-container">
           <div class="logo-zone">
             <span class="logo-text">CINEFLOW</span>
+            <div class="clear-storage-wrapper">
+              <button class="clear-storage-btn" id="clearStorageBtn" title="Clear all data">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+              <div class="clear-popup" id="clearPopup">
+                <div class="clear-popup-text">Clear all media data?</div>
+                <div class="clear-popup-actions">
+                  <button type="button" class="clear-confirm-btn" id="clearConfirmBtn">Yes, clear</button>
+                  <button type="button" class="clear-cancel-btn" id="clearCancelBtn">Cancel</button>
+                </div>
+              </div>
+            </div>
           </div>
-          
           <form class="search-zone" id="quickAddForm" action="">
             <i class="fa-solid fa-magnifying-glass search-icon"></i>
-            <input 
-              type="text" 
-              id="quickAddInput" 
-              placeholder="Search movie..." 
-              enterkeyhint="done"
-              autocomplete="off"
-              autocorrect="off"
-              autocapitalize="off"
-              spellcheck="false"
-            />
-            <button type="submit" class="search-submit-btn" title="Done">
-              <i class="fa-solid fa-check"></i>
-            </button>
+            <input type="text" id="quickAddInput" placeholder="Quick add by title..." autocomplete="off" />
+            <button type="submit" class="search-submit-btn"><i class="fa-solid fa-plus"></i></button>
           </form>
         </div>
       </header>
 
-      <main class="animate-entry d-2">
-        <div class="filter-bar">
-          <button class="filter-btn active" id="filterAll">All</button>
-          <button class="filter-btn" id="filterFantasyAdventure">Fantasy-adventure</button>
-          <button class="filter-btn" id="filterAnimated">Animated</button>
-          <button class="filter-btn" id="filterFantasyRomance">Fantasy-romance</button>
-          <button class="filter-btn" id="filterAdventure">Adventure</button>
-          <button class="filter-btn" id="filterSciFi">Sci-Fi</button>
-          <button class="filter-btn" id="filterHorror">Horror</button>
-          <button class="filter-btn" id="filterThriller">Thriller</button>
-          <button class="filter-btn" id="filterDrama">Drama</button>
-          <button class="filter-btn" id="filterAction">Action</button>
-          <button class="filter-btn" id="filterComedy">Comedy</button>
-        </div>
-      </main>
-
       <main>
+        <div class="filter-bar animate-entry d-2" id="filterBar"></div>
+        <div class="mobile-hint" id="mobileHint">
+          <i class="fa-solid fa-circle-info"></i> Tap to view info • Hold card to edit/delete
+        </div>
         <div class="books-list" id="booksList"></div>
       </main>
     </div>
@@ -63,32 +53,26 @@
     <div class="modal-overlay" id="bookModal">
       <div class="modal-content">
         <div class="modal-header">
-          <h2>Edit favourite</h2>
+          <h2 id="modalTitle">Edit Movie</h2>
           <button class="modal-close" id="closeModal">✕</button>
         </div>
-        <form id="bookForm">
+        <form class="modal-body" id="bookForm">
           <div class="form-group">
-            <label>Title</label>
-            <input type="text" id="bookName" required autocomplete="off" spellcheck="false" />
+            <label>Title *</label>
+            <input type="text" id="bookTitle" required />
           </div>
           <div class="form-group">
-            <label>Cover Image URL</label>
-            <input type="text" id="bookImg" placeholder="Paste Image URL" autocomplete="off" />
-            <div class="file-upload-wrapper" id="fileUploadWrapper">
-              <input type="file" id="bookFile" class="file-upload-input" accept="image/*" />
-              <div class="file-upload-btn" id="fileUploadText">
-                <i class="fa-solid fa-cloud-arrow-up"></i> Choose New Image File
-              </div>
-            </div>
+            <label>Image URL</label>
+            <input type="text" id="bookImg" placeholder="Leave empty to auto-fetch" />
           </div>
           <div class="form-group">
             <label>Category</label>
-            <select id="bookCategory" required>
-              <option value="Fantasy-adventure">Fantasy-adventure</option>
-              <option value="Animated">Animated</option>
-              <option value="Fantasy-romance">Fantasy-romance</option>
-              <option value="Adventure">Adventure</option>
+            <select id="bookCategory">
               <option value="Sci-Fi">Sci-Fi</option>
+              <option value="Fantasy">Fantasy</option>
+              <option value="Animation">Animation</option>
+              <option value="Romance">Romance</option>
+              <option value="Adventure">Adventure</option>
               <option value="Horror">Horror</option>
               <option value="Thriller">Thriller</option>
               <option value="Drama">Drama</option>
@@ -100,8 +84,30 @@
             <label>Description</label>
             <textarea id="bookDesc" spellcheck="false"></textarea>
           </div>
-          <button type="submit" class="submit-btn">Save Changes</button>
+          <div class="modal-actions-row">
+            <button type="button" class="modal-delete-btn" id="modalDeleteBtn" title="Delete">
+              <i class="fa-regular fa-trash-can"></i>
+            </button>
+            <button type="submit" class="submit-btn">Save Changes</button>
+          </div>
         </form>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="viewModal">
+      <div class="modal-content view-modal">
+        <div class="modal-header">
+          <h2>Movie Details</h2>
+          <button class="modal-close" id="closeViewModal">✕</button>
+        </div>
+        <div class="view-modal-body">
+          <div class="view-modal-image" id="viewModalImage"></div>
+          <div class="view-modal-info">
+            <div class="view-modal-category" id="viewModalCategory"></div>
+            <h3 class="view-modal-title" id="viewModalTitle"></h3>
+            <div class="view-modal-desc" id="viewModalDesc"></div>
+          </div>
+        </div>
       </div>
     </div>
   </body>

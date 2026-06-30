@@ -4,8 +4,6 @@ const storedMovies = localStorage.getItem("cineflow_media");
 const movies = storedMovies ? JSON.parse(storedMovies) : [];
 
 let currentFilter = "All";
-let isFilterBarInitialized = false;
-const btnData = [];
 
 function saveToStorage() {
   localStorage.setItem("cineflow_media", JSON.stringify(movies));
@@ -23,7 +21,8 @@ async function fetchOmdbData(title) {
       };
     }
     return null;
-  } catch {
+  } catch (err) {
+    logError("OMDB API fetch failed: " + err.message);
     return null;
   }
 }
@@ -33,22 +32,22 @@ function matchCategory(omdbGenreString) {
   const genres = omdbGenreString.split(",").map(g => g.trim().toLowerCase());
   
   const mapping = {
-    "fantasy-adventure": ["fantasy", "adventure"],
-    "animated": ["animation", "animated"],
-    "fantasy-romance": ["romance", "fantasy"],
-    "adventure": ["adventure"],
-    "sci-fi": ["sci-fi", "science fiction"],
-    "horror": ["horror"],
-    "thriller": ["thriller", "mystery"],
-    "drama": ["drama"],
-    "action": ["action"],
-    "comedy": ["comedy"]
+    "Fantasy": ["fantasy"],
+    "Animation": ["animation", "animated"],
+    "Romance": ["romance"],
+    "Adventure": ["adventure"],
+    "Sci-Fi": ["sci-fi", "science fiction"],
+    "Horror": ["horror"],
+    "Thriller": ["thriller", "mystery"],
+    "Drama": ["drama"],
+    "Action": ["action"],
+    "Comedy": ["comedy"]
   };
 
   for (const [catKey, keywords] of Object.entries(mapping)) {
     for (const keyword of keywords) {
       if (genres.includes(keyword)) {
-        return catKey.charAt(0).toUpperCase() + catKey.slice(1);
+        return catKey;
       }
     }
   }
@@ -57,29 +56,43 @@ function matchCategory(omdbGenreString) {
 
 const moviesList = document.getElementById("booksList");
 const modal = document.getElementById("bookModal");
+const viewModal = document.getElementById("viewModal");
 const closeModalBtn = document.getElementById("closeModal");
+const closeViewModalBtn = document.getElementById("closeViewModal");
 const form = document.getElementById("bookForm");
 const quickAddForm = document.getElementById("quickAddForm");
 const quickAddInput = document.getElementById("quickAddInput");
+const filterBar = document.getElementById("filterBar");
 let editIndex = null;
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 function createMovieCard({ name, img, desc, category }, index) {
   const delay = Math.min(0.1 + (index * 0.05), 0.6);
+  const safeName = escapeHtml(name);
+  const safeDesc = escapeHtml(desc);
   return `
     <div class="books-card animate-entry" style="animation-delay: ${delay}s;" data-index="${index}" id="movieCard-${index}">
       <div class="books-body">
         <div class="image-container loading" id="imgContainer-${index}">
-          <span class="card-category-badge">${category}</span>
-          <img src="" class="books-image" id="img-${index}" alt="${name}" />
+          <span class="card-category-badge">${escapeHtml(category)}</span>
+          <img src="" class="books-image" id="img-${index}" alt="${safeName}" />
         </div>
-        <div class="books-title">${name}</div>
-        <div class="books-text">${desc}</div>
+        <div class="books-title">${safeName}</div>
+        <div class="books-text">${safeDesc}</div>
       </div>
       <div class="books-actions">
-        <button class="icon-btn edit" title="Edit" onclick="editMovie(${index})">
+        <button class="icon-btn edit" title="Edit" onclick="event.stopPropagation(); editMovie(${index})">
           <i class="fa-regular fa-pen-to-square"></i>
         </button>
-        <button class="icon-btn delete" title="Delete" onclick="deleteMovie(${index})">
+        <button class="icon-btn delete" title="Delete" onclick="event.stopPropagation(); deleteMovie(${index})">
           <i class="fa-regular fa-trash-can"></i>
         </button>
       </div>
@@ -97,6 +110,10 @@ async function loadImageForCard(movie, index) {
     const omdbData = await fetchOmdbData(movie.name);
     if (omdbData && omdbData.poster) {
       finalSrc = omdbData.poster;
+      movie.img = finalSrc;
+      saveToStorage();
+    } else {
+      logWarn(`No poster found for title: "${movie.name}"`);
     }
   }
 
@@ -107,6 +124,7 @@ async function loadImageForCard(movie, index) {
       imgEl.classList.add("loaded");
     };
     imgEl.onerror = () => {
+      logError(`Failed to load image resource: ${finalSrc}`);
       showNotFoundPlaceholder(containerEl);
     };
   } else {
@@ -125,40 +143,92 @@ function showNotFoundPlaceholder(container) {
     </div>`;
 }
 
+function renderFilters() {
+    if (!filterBar) return;
+    
+    const categories = ["All", ...new Set(movies.map(m => m.category))];
+    const currentButtons = Array.from(filterBar.querySelectorAll(".filter-btn"));
+    const currentCats = currentButtons.map(b => b.getAttribute("data-cat"));
+
+    if (currentCats.length !== categories.length || !categories.every((c, i) => currentCats[i] === c)) {
+        filterBar.innerHTML = categories.map(cat => `
+            <button class="filter-btn ${currentFilter === cat ? 'active' : ''}" data-cat="${escapeHtml(cat)}" onclick="setFilter('${escapeHtml(cat)}')">${escapeHtml(cat)}</button>
+        `).join('');
+    } else {
+        currentButtons.forEach(btn => {
+            const cat = btn.getAttribute("data-cat");
+            if (cat === currentFilter) {
+                btn.classList.add("active");
+            } else {
+                btn.classList.remove("active");
+            }
+        });
+    }
+    
+    if (window.matchMedia("(max-width: 768px)").matches) {
+        if (filterBar.scrollWidth > filterBar.clientWidth) {
+            filterBar.style.justifyContent = "flex-start";
+        } else {
+            filterBar.style.justifyContent = "center";
+        }
+    }
+}
+
+function setFilter(filter) {
+    currentFilter = filter;
+    logLog(`Filter switched to: "${filter}"`);
+    render();
+}
+
+function render() {
+    if (!moviesList) return;
+    moviesList.innerHTML = "";
+    
+    const filtered = currentFilter === "All" ? movies : movies.filter(m => m.category === currentFilter);
+    
+    if (filtered.length === 0) {
+        moviesList.innerHTML = `
+          <div class="empty">
+            <h3>No movies found :(</h3>
+            <p>but it's never too late to change it!</p>
+          </div>`;
+    } else {
+        filtered.forEach((movie, index) => {
+            const realIndex = movies.indexOf(movie);
+            moviesList.innerHTML += createMovieCard(movie, realIndex);
+        });
+        filtered.forEach((movie, index) => {
+            const realIndex = movies.indexOf(movie);
+            loadImageForCard(movie, realIndex);
+        });
+        initTiltEffect();
+        initMobileCardInteractions();
+    }
+    renderFilters();
+}
+
 function initTiltEffect() {
+  if (window.matchMedia("(max-width: 768px)").matches) return;
   const cards = document.querySelectorAll(".books-card");
   
   cards.forEach(card => {
     let reqId = null;
-    let targetX = 0;
-    let targetY = 0;
-    let targetScale = 1;
-    let currentX = 0;
-    let currentY = 0;
-    let currentScale = 1;
+    let targetX = 0; targetY = 0; targetScale = 1;
+    let currentX = 0; currentY = 0; currentScale = 1;
     let isHovered = false;
-    
-    let lastLeft = card.offsetLeft;
-    let lastTop = card.offsetTop;
-    let internalX = 0;
-    let internalY = 0;
+    let lastLeft = card.offsetLeft; let lastTop = card.offsetTop;
+    let internalX = 0; let internalY = 0;
 
-    if (reqId) {
-      cancelAnimationFrame(reqId);
-      reqId = null;
-    }
+    if (reqId) cancelAnimationFrame(reqId);
 
     function updateAnimation() {
       const currentLeft = card.offsetLeft;
       const currentTop = card.offsetTop;
-      
       if (currentLeft !== lastLeft || currentTop !== lastTop) {
         internalX += lastLeft - currentLeft;
         internalY += lastTop - currentTop;
-        lastLeft = currentLeft;
-        lastTop = currentTop;
+        lastLeft = currentLeft; lastTop = currentTop;
       }
-      
       internalX += (0 - internalX) * 0.1;
       internalY += (0 - internalY) * 0.1;
 
@@ -178,279 +248,283 @@ function initTiltEffect() {
         currentScale += (targetScale - currentScale) * 0.1;
         card.style.transform = `scale(${currentScale}) translate(${currentX + internalX}px, ${currentY + internalY}px)`;
       }
-      
       reqId = requestAnimationFrame(updateAnimation);
     }
-    
     reqId = requestAnimationFrame(updateAnimation);
     
     card.addEventListener("mousemove", e => {
       const rect = card.getBoundingClientRect();
-      const width = rect.width;
-      const height = rect.height;
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      
-      targetX = ((x - (width / 2)) / (width / 2)) * 3;
-      targetY = ((y - (height / 2)) / (height / 2)) * 3;
+      targetX = ((e.clientX - rect.left - (rect.width / 2)) / (rect.width / 2)) * 3;
+      targetY = ((e.clientY - rect.top - (rect.height / 2)) / (rect.height / 2)) * 3;
     });
-    
-    card.addEventListener("mouseenter", () => {
-      isHovered = true;
-      targetScale = 1.04;
-      card.style.transition = "box-shadow 0.3s ease";
-    });
-    
-    card.addEventListener("mouseleave", () => {
-      isHovered = false;
-      targetX = 0;
-      targetY = 0;
-      targetScale = 1;
-    });
+    card.addEventListener("mouseenter", () => { isHovered = true; targetScale = 1.04; });
+    card.addEventListener("mouseleave", () => { isHovered = false; targetX = 0; targetY = 0; targetScale = 1; });
+    card.addEventListener("click", () => { openViewModal(card.getAttribute("data-index")); });
   });
 }
 
-function updateFilterVisibility() {
-  const usedCategories = new Set(movies.map(m => m.category.toLowerCase()));
-  document.querySelectorAll(".filter-btn").forEach(btn => {
-    if (btn.id === "filterAll") return;
-    const label = btn.textContent.trim().toLowerCase();
-    const hasItems = usedCategories.has(label);
-    btn.style.display = hasItems ? "" : "none";
-    if (!hasItems && btn.classList.contains("active")) {
-      btn.classList.remove("active");
-      document.getElementById("filterAll").classList.add("active");
-      currentFilter = "All";
-    }
-  });
-}
+const LONG_PRESS_MS = 500;
+const LONG_PRESS_MOVE_TOLERANCE = 8;
 
-function initFilterBarAnimation() {
-  const filterBar = document.querySelector(".filter-bar");
-  if (!filterBar || isFilterBarInitialized) return;
-  
-  const filterBtns = filterBar.querySelectorAll(".filter-btn, button");
-  btnData.length = 0;
-
-  filterBtns.forEach(btn => {
-    btnData.push({
-      element: btn,
-      lastLeft: btn.offsetLeft,
-      lastTop: btn.offsetTop,
-      currentX: 0,
-      currentY: 0
-    });
-  });
-
-  isFilterBarInitialized = true;
-  requestAnimationFrame(updateBarAnimation);
-}
-
-function updateBarAnimation() {
-  btnData.forEach(data => {
-    const currentLeft = data.element.offsetLeft;
-    const currentTop = data.element.offsetTop;
-
-    if (currentLeft !== data.lastLeft || currentTop !== data.lastTop) {
-      data.currentX += data.lastLeft - currentLeft;
-      data.currentY += data.lastTop - currentTop;
-      data.lastLeft = currentLeft;
-      data.lastTop = currentTop;
-    }
-
-    data.currentX += (0 - data.currentX) * 0.1;
-    data.currentY += (0 - data.currentY) * 0.1;
-
-    if (Math.abs(data.currentX) > 0.01 || Math.abs(data.currentY) > 0.01) {
-      data.element.style.transform = `translate(${data.currentX}px, ${data.currentY}px)`;
-    } else {
-      data.element.style.transform = "";
-    }
-  });
-
-  requestAnimationFrame(updateBarAnimation);
-}
-
-function render() {
-  updateFilterVisibility();
-  const filteredMovies = movies.filter(m => currentFilter === "All" || m.category.toLowerCase() === currentFilter.toLowerCase());
-
-  if (!filteredMovies.length) {
-    const isEmpty = movies.length === 0;
-    moviesList.innerHTML = `
-    <div class="empty animate-entry d-3">
-      <h3>Your collection is empty</h3>
-      <p style="font-size:0.875rem;margin-top:5px;">${isEmpty ? "Type a movie title in the top search field and press Enter to start." : "Try changing filters."}</p>
-    </div>`;
-    
-    if (!isFilterBarInitialized) {
-      initFilterBarAnimation();
-    }
+function openViewModal(index) {
+  const movie = movies[index];
+  if (!movie) {
+    logError(`Cannot open read-only view modal. Index [${index}] out of bounds.`);
     return;
   }
-
-  moviesList.innerHTML = filteredMovies.map((movie, i) => createMovieCard(movie, i)).join("");
-
-  filteredMovies.forEach((movie, i) => {
-    loadImageForCard(movie, i);
-  });
+  logLog(`Opening view modal for index: [${index}] -> "${movie.name}"`);
   
-  initTiltEffect();
+  const modalImage = document.getElementById("viewModalImage");
+  const modalCategory = document.getElementById("viewModalCategory");
+  const modalTitle = document.getElementById("viewModalTitle");
+  const modalDesc = document.getElementById("viewModalDesc");
   
-  if (!isFilterBarInitialized) {
-    initFilterBarAnimation();
-  }
-}
-
-function getBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = error => reject(error);
-  });
-}
-
-quickAddForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const titleValue = quickAddInput.value.trim();
-  if (!titleValue) return;
-
-  quickAddInput.blur();
-  quickAddInput.disabled = true;
-  quickAddInput.placeholder = "Searching and generating card...";
-
-  const omdbData = await fetchOmdbData(titleValue);
-  
-  let descValue = "No description available.";
-  let categoryValue = "Sci-Fi";
-  let finalImg = "";
-
-  if (omdbData) {
-    descValue = omdbData.plot || descValue;
-    categoryValue = matchCategory(omdbData.genre);
-    finalImg = omdbData.poster || "";
-  }
-
-  const newMovie = {
-    name: titleValue,
-    img: finalImg,
-    desc: descValue,
-    category: categoryValue
-  };
-
-  movies.push(newMovie);
-  saveToStorage();
-  
-  quickAddInput.value = "";
-  quickAddInput.disabled = false;
-  quickAddInput.placeholder = "Search movie...";
-  
-  render();
-});
-
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const submitBtn = form.querySelector(".submit-btn");
-  submitBtn.textContent = "Saving...";
-  submitBtn.disabled = true;
-
-  const titleValue = document.getElementById("bookName").value.trim();
-  const urlValue = document.getElementById("bookImg").value.trim();
-  let descValue = document.getElementById("bookDesc").value.trim();
-  let categoryValue = document.getElementById("bookCategory").value;
-  const fileInput = document.getElementById("bookFile");
-  
-  let finalImg = urlValue;
-
-  if (fileInput.files && fileInput.files[0]) {
-    try {
-      finalImg = await getBase64(fileInput.files[0]);
-    } catch (err) {
-      console.error(err);
-    }
-  } else if (editIndex !== null && !urlValue) {
-    finalImg = movies[editIndex].img;
-  }
-
-  const movieData = {
-    name: titleValue,
-    img: finalImg,
-    desc: descValue,
-    category: categoryValue,
-  };
-
-  if (editIndex !== null) {
-    movies[editIndex] = movieData;
-  }
-
-  saveToStorage();
-  submitBtn.textContent = "Save Changes";
-  submitBtn.disabled = false;
-  modal.classList.remove("open");
-  render();
-});
-
-document.querySelectorAll(".filter-btn").forEach(btn => {
-  btn.addEventListener("click", (e) => {
-    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
-    e.target.classList.add("active");
-    
-    if (e.target.id === "filterAll") {
-      currentFilter = "All";
-    } else {
-      currentFilter = e.target.textContent.trim();
-    }
-    render();
-  });
-});
-
-closeModalBtn.addEventListener("click", () => modal.classList.remove("open"));
-modal.addEventListener("click", (e) => { if (e.target === modal) modal.classList.remove("open"); });
-
-document.getElementById("bookFile").addEventListener("change", function(e) {
-  const wrapper = document.getElementById("fileUploadWrapper");
-  const text = document.getElementById("fileUploadText");
-  if (this.files && this.files[0]) {
-    wrapper.classList.add("file-selected");
-    text.innerHTML = `<i class="fa-solid fa-check"></i> ${this.files[0].name}`;
+  if (movie.img) {
+    modalImage.innerHTML = `<img src="${escapeHtml(movie.img)}" alt="${escapeHtml(movie.name)}">`;
   } else {
-    wrapper.classList.remove("file-selected");
-    text.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Choose New Image File';
+    modalImage.innerHTML = `
+      <div class="not-found-thumb" style="position: relative; height: 100%;">
+        <i class="fa-solid fa-film"></i>
+        <span>Cover<br>Not Found</span>
+      </div>`;
   }
-});
+  modalCategory.textContent = movie.category;
+  modalTitle.textContent = movie.name;
+  modalDesc.textContent = movie.desc || "No description provided.";
+  viewModal.classList.add("open");
+}
 
-window.editMovie = function (index) {
+function initMobileCardInteractions() {
+  if (!window.matchMedia("(max-width: 768px)").matches) return;
+  document.querySelectorAll(".books-card").forEach(card => {
+    const index = card.getAttribute("data-index");
+    let pressTimer = null;
+    let longPressFired = false;
+    let isScrolling = false;
+    let startX = 0, startY = 0;
+
+    card.addEventListener("touchstart", (e) => {
+      longPressFired = false;
+      isScrolling = false;
+      const touch = e.touches[0];
+      startX = touch.clientX;
+      startY = touch.clientY;
+      
+      pressTimer = setTimeout(() => {
+        if (!isScrolling) {
+          longPressFired = true;
+          editMovie(Number(index));
+          if (navigator.vibrate) navigator.vibrate(15);
+        }
+      }, LONG_PRESS_MS);
+    }, { passive: true });
+
+    card.addEventListener("touchmove", (e) => {
+      const touch = e.touches[0];
+      if (Math.abs(touch.clientX - startX) > LONG_PRESS_MOVE_TOLERANCE || Math.abs(touch.clientY - startY) > LONG_PRESS_MOVE_TOLERANCE) {
+        isScrolling = true;
+        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+      }
+    }, { passive: true });
+
+    card.addEventListener("touchend", (e) => {
+      if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+      if (!longPressFired && !isScrolling) {
+          const currentTarget = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+          if (currentTarget && currentTarget.closest(`.books-card`) === card) {
+              openViewModal(index);
+          }
+      }
+    });
+
+    card.addEventListener("touchcancel", () => { 
+        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } 
+    });
+  });
+}
+
+function editMovie(index) {
   editIndex = index;
   const movie = movies[index];
-
-  document.getElementById("bookName").value = movie.name;
-  document.getElementById("bookImg").value = movie.img.startsWith("data:image") ? "" : movie.img;
-  document.getElementById("bookDesc").value = movie.desc;
-  document.getElementById("bookCategory").value = movie.category;
+  if (!movie) return;
+  logLog(`Opening edit modal for index: [${index}]`);
   
-  const fileInput = document.getElementById("bookFile");
-  fileInput.value = "";
-  document.getElementById("fileUploadWrapper").classList.remove("file-selected");
-  document.getElementById("fileUploadText").innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Choose New Image File';
-
+  document.getElementById("modalTitle").innerText = "Edit Movie";
+  document.getElementById("bookTitle").value = movie.name;
+  document.getElementById("bookImg").value = movie.img || "";
+  document.getElementById("bookCategory").value = movie.category;
+  document.getElementById("bookDesc").value = movie.desc || "";
+  
+  const delBtn = document.getElementById("modalDeleteBtn");
+  if (delBtn) delBtn.style.display = "flex";
   modal.classList.add("open");
-};
+}
 
-window.deleteMovie = function (index) {
+function deleteMovie(index) {
   const card = document.getElementById(`movieCard-${index}`);
+  logWarn(`Deleting movie asset at index: [${index}]`);
   if (card) {
-    card.classList.add("card-fade-out");
-    card.addEventListener("animationend", () => {
+      card.classList.add("card-fade-out");
+      setTimeout(() => {
+          movies.splice(index, 1);
+          saveToStorage();
+          render();
+      }, 400);
+  } else {
       movies.splice(index, 1);
       saveToStorage();
       render();
-    }, { once: true });
-  } else {
-    movies.splice(index, 1);
-    saveToStorage();
-    render();
   }
-};
+}
 
-document.addEventListener("DOMContentLoaded", render);
+if (form) {
+    form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const title = document.getElementById("bookTitle").value.trim();
+        const img = document.getElementById("bookImg").value.trim();
+        const category = document.getElementById("bookCategory").value;
+        const desc = document.getElementById("bookDesc").value.trim();
+
+        if (!title) return;
+        if (editIndex !== null) {
+            movies[editIndex] = { name: title, img, category, desc };
+            logLog(`Successfully updated movie item at index: [${editIndex}]`);
+        }
+        saveToStorage();
+        render();
+        modal.classList.remove("open");
+    });
+}
+
+if (quickAddForm) {
+    quickAddForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const title = quickAddInput.value.trim();
+        if (!title) return;
+
+        logLog(`Quick adding media entry by title request: "${title}"`);
+        const inputEl = quickAddInput;
+        const btnEl = quickAddForm.querySelector("button");
+        inputEl.disabled = true; btnEl.disabled = true;
+        
+        if (document.activeElement) {
+            document.activeElement.blur();
+        }
+
+        const data = await fetchOmdbData(title);
+        let newImg = ""; let newDesc = ""; let newCategory = "Sci-Fi";
+
+        if (data) {
+            newImg = data.poster || "";
+            newDesc = data.plot || "";
+            newCategory = matchCategory(data.genre);
+            logLog(`Auto-match data success for "${title}" -> Category: [${newCategory}]`);
+        } else {
+            logWarn(`No API match dataset returned for: "${title}". Using defaults.`);
+        }
+
+        movies.push({ name: title, img: newImg, category: newCategory, desc: newDesc });
+        saveToStorage();
+        render();
+
+        inputEl.value = ""; inputEl.disabled = false; btnEl.disabled = false;
+    });
+}
+
+if (closeModalBtn) {
+    closeModalBtn.addEventListener("click", () => { modal.classList.remove("open"); });
+}
+
+if (closeViewModalBtn) {
+    closeViewModalBtn.addEventListener("click", () => { 
+        logLog("Closing read-only view modal window.");
+        viewModal.classList.remove("open"); 
+    });
+}
+
+const modalDeleteBtn = document.getElementById("modalDeleteBtn");
+if (modalDeleteBtn) {
+    modalDeleteBtn.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (editIndex === null || editIndex === undefined) return;
+        deleteMovie(editIndex);
+        modal.classList.remove("open");
+        editIndex = null;
+    });
+}
+
+const clearStorageBtn = document.getElementById("clearStorageBtn");
+const clearPopup = document.getElementById("clearPopup");
+const clearConfirmBtn = document.getElementById("clearConfirmBtn");
+const clearCancelBtn = document.getElementById("clearCancelBtn");
+
+if (clearStorageBtn && clearPopup) {
+  clearStorageBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    clearPopup.classList.toggle("open");
+  });
+}
+
+if (clearConfirmBtn) {
+  clearConfirmBtn.addEventListener("click", () => {
+    logWarn("Flushing all localStorage repository items!");
+    localStorage.removeItem("cineflow_media");
+    movies.length = 0;
+    render();
+    clearPopup.classList.remove("open");
+  });
+}
+
+if (clearCancelBtn) {
+  clearCancelBtn.addEventListener("click", () => {
+    clearPopup.classList.remove("open");
+  });
+}
+
+const debugLog = document.getElementById("debug-log");
+function writeToConsole(msg, className) {
+  if (debugLog) {
+    const time = new Date().toLocaleTimeString();
+    debugLog.innerHTML += `<div class="console-row ${className}">[${time}] ${msg}</div>`;
+    debugLog.scrollTop = debugLog.scrollHeight;
+  }
+}
+function logLog(msg) { writeToConsole(`[INFO] ${msg}`, "console-ok"); }
+function logWarn(msg) { writeToConsole(`[WARN] ${msg}`, "console-warn"); }
+function logError(msg) { writeToConsole(`[ERROR] ${msg}`, "console-err"); }
+
+window.addEventListener("error", (e) => {
+    logError(`Runtime Exception: ${e.message} at ${e.filename}:${e.lineno}`);
+});
+
+let logoTapCount = 0; let logoTapTimer = null;
+const logoZone = document.querySelector(".logo-zone");
+if (logoZone) {
+  logoZone.addEventListener("click", () => {
+    logoTapCount++;
+    clearTimeout(logoTapTimer);
+    logoTapTimer = setTimeout(() => { logoTapCount = 0; }, 500);
+    if (logoTapCount >= 3) {
+      if (debugLog) debugLog.style.display = debugLog.style.display === "none" ? "block" : "none";
+      logLog("DevConsole layout toggled via logo triple-tap shortcut.");
+      logoTapCount = 0;
+    }
+  });
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.classList.contains("modal-overlay")) {
+    logLog("Outside click detected. Closing all open modal layer view systems.");
+    modal.classList.remove("open");
+    viewModal.classList.remove("open");
+  }
+  
+  if (clearPopup && clearPopup.classList.contains("open") && !e.target.closest(".clear-storage-wrapper")) {
+    clearPopup.classList.remove("open");
+  }
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+    logLog("DOM Tree Parsing completed. Initializing CineFlow application system.");
+    render();
+});
