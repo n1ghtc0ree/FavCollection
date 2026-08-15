@@ -5,7 +5,7 @@ A responsive web application for managing a personalized collection of books and
 ## Production URL
 
 The application is deployed and publicly accessible at:
-https://favcoll.netlify.app/
+https://cineflowey.netlify.app/
 
 ## Features
 
